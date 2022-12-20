@@ -8,27 +8,21 @@ import pigpio # Less servo jitter. Need pigpiod running.
 import time
 
 # Servo colors.
-RED   = 24 # GPIO pin.
 WHITE = 22 # GPIO pin.
+RED   = 24 # GPIO pin.
 BLUE  = 17 # GPIO pin.
 GREY  = 23 # GPIO pin but not connected.  We assume the 4th color meaning none of the above.
-gpins = [RED, WHITE, BLUE, GREY]
+
+colorText = {
+    WHITE: "WHITE",
+    RED  : "RED  ",
+    BLUE : "BLUE ",
+    GREY : "GREY ",
+    }
 
 # Webcam resolution.
 frame_height = 480
 frame_width = 640
-
-class Color:
-    @classmethod
-    def text(cls, c):
-        if c == RED:
-            return "RED  "
-        if c == WHITE:
-            return "WHITE"
-        if c == BLUE:
-            return "BLUE "
-        if c == GREY:
-            return "GREY "
 
 class Pixel:
     move = 1 # Number of pixel to move targets.
@@ -82,22 +76,22 @@ class Pixel:
 
 class Servo:
     pwm = pigpio.pi()
-    def __init__(self, gpin, angle=45.0):
+    def __init__(self, gpin, angle=135.0):
         self.gpin = gpin
         self.angleUp = angle # degrees.
-        self.angleDisplacement = 9 # degrees. #<--- TUNE THIS
-        self.tapDuration = 0.05 # seconds. #<--- TUNE THIS
-        self.postTapDuration = 0.11 # seconds #<--- TUNE THIS
+        self.angleDisplacement = 20 # 18 is good
+        self.tapDuration =     0.045 # seconds. #<--- TUNE THIS
+        self.postTapDuration = 0.105 # seconds #<--- TUNE THIS
         Servo.pwm.set_mode(self.gpin, pigpio.OUTPUT)
         Servo.pwm.set_PWM_frequency(self.gpin, 50)  # My servo operates at 50Hz.
         Servo.pwm.set_servo_pulsewidth(self.gpin, Servo.translateDegree(self.angleUp)) # Move arm to the ready position.
-    def __del__(self):
-        Servo.pwm.set_servo_pulsewidth(self.gpin, Servo.translateDegree(90.0)) # Raise arm all the way up for maintenance.
+    def cleanup(self):
+        Servo.pwm.set_servo_pulsewidth(self.gpin, Servo.translateDegree(90.0)) # Park arm all the way up for maintenance.
         time.sleep(self.tapDuration)
         Servo.pwm.set_PWM_dutycycle(self.gpin, 0)
         Servo.pwm.set_PWM_frequency(self.gpin, 0)
     def __repr__(self):
-        return f'{Color.text(self.gpin)}: Servo({Color.text(self.gpin)}, {self.angleUp}),'
+        return f'{colorText.get(self.gpin)}: Servo({colorText.get(self.gpin)}, {self.angleUp}),'
     def tap(self):
         Servo.pwm.set_servo_pulsewidth(self.gpin, Servo.translateDegree(self.angleUp-self.angleDisplacement)) # Lower arm.
         time.sleep(self.tapDuration) # Wait slightly for the arm to tap.
@@ -105,8 +99,8 @@ class Servo:
         time.sleep(self.postTapDuration) # Wait slightly for the arm to return.
     def tuneAngle(self, change=1):
         self.angleUp += change
-        if self.angleUp < 12.0:
-            self.angleUp = 12.0
+        if self.angleUp < 11.0:
+            self.angleUp = 11.0
         elif self.angleUp > 178.0:
             self.angleUp = 178.0
         Servo.pwm.set_servo_pulsewidth(self.gpin, Servo.translateDegree(self.angleUp)) # Raise arm to new position
@@ -129,18 +123,18 @@ class TapTapMachine:
     def __init__(self):
         # Initialize Servos.
         self.servo = {
-            RED  : Servo(RED  , 14.0),
-            WHITE: Servo(WHITE, 41.0),
+            RED  : Servo(RED  , 20.0),
+            WHITE: Servo(WHITE, 30.0),
             BLUE : Servo(BLUE , 18.0),
             GREY : Servo(GREY , 45.0),
             }
-        # There are only 8 pixels in the frame. The last pixel tracks the GO! signal.
-        self.target = [Pixel(297,444), Pixel(297,409), Pixel(297,374), Pixel(297,340), Pixel(297,305), Pixel(297,272), Pixel(300,239), Pixel(297,213), Pixel(207,361), ]
+        # There are only 8 pixels in the frame for the game. The 9th pixel tracks the GO! signal.
+        self.target = [Pixel(350,379), Pixel(350,344), Pixel(349,311), Pixel(349,277), Pixel(348,243), Pixel(348,209), Pixel(348,174), Pixel(348,141), Pixel(258,292), ]
     def cleanup(self):
         # Report the servo and target settings in case the next run wants to know.
-        for gpin in gpins:
-            print(repr(self.servo[gpin]))
-            del self.servo[gpin]
+        for k, v in self.servo.items():
+            v.cleanup()
+            print(repr(v))
         print('self.target = [', end = '')
         for tgt in self.target:
             print(repr(tgt), end=', ')
@@ -149,7 +143,7 @@ class TapTapMachine:
         ti = time.time()
         print(ti, end=' ')
         for k in buttons:
-            print(Color.text(k), end=' ')
+            print(colorText.get(k), end=' ')
         print('')
         return ti
     def run(self):
@@ -158,6 +152,7 @@ class TapTapMachine:
         servoInFocus = GREY
         oldButtons = []
         newButtons = []
+        level = 0
         while True:
             ret, frame = cap.read() # Capture 1 frame from image input.
             if not ret:
@@ -170,10 +165,18 @@ class TapTapMachine:
             cv2.imshow('live video', frame)
             key = cv2.waitKey(1)
 
+            #match key: # Since Python 3.10.  Mine at 3.9.2.
+            #	case ord('q'):
+
             # Quit.
             if (key==ord('q')):
                 print('Quit')
                 break
+
+            # Reset Level.
+            elif (key==ord('r')):
+                print('Reset Level')
+                level = 0
 
             # Flip the safety on/off.
             elif (key==ord('s')):
@@ -182,6 +185,9 @@ class TapTapMachine:
                     print('Safety ON')
                 else:
                     print('Safety OFF')
+                    level += 1
+                    tapCount = 0
+                    tapMax = 30 if level < 4 else level*5 + 15
 
             # Cycle through targets.
             elif (key==ord('n')):
@@ -252,33 +258,46 @@ class TapTapMachine:
 
             if (key==ord('p')):
                 self.printButtons(newButtons)
-            
-            # Sometimes I started too soon before the GO! signal. This prevents using that frame.
-            kGo = self.target[-1].getColor(frame)
-            if kGo == WHITE:
+
+            # Discard and try again if the text "GO!" is still in this frame.
+            if self.target[-1].getColor(frame) == WHITE:
+                time.sleep(0.02)
                 continue
 
             # Main dish here.
             if not safetyOn:
                 if not oldButtons == newButtons:
-                    #ti = self.printButtons(newButtons) # Debug print.
                     #j = 0
-                    #cv2.imwrite(f'{ti}.{j}.png', frame)
                     # Safety Off ... Fire !!!!!!!!
+                    if tapCount == 0:
+                        tiStart = time.time()
                     for k in newButtons[:8]:
+                        tapCount += 1
+                        if False and tapCount == tapMax:
+                            while True:
+                                if time.time() - tiStart > 19.4:
+                                    break
+                            # Want to tap the very last one at the very last moment.
+
                         self.servo[k].tap()
                         #j += 1
                         #ret, frame = cap.read() # To see what is in between taps.
                         #cv2.imwrite(f'{ti}.{j}.png', frame)
+
+                    #if level == 18 and tapCount == 104: # Couldn't make the 105'th in time.
+                    #    self.servo[BLUE].tap()
+                    self.printButtons(newButtons) # Debug print.
+                    cv2.imwrite(f'x.png', frame)
+
                     oldButtons = newButtons
-                    time.sleep(0.21) # Wait before taking another image.
+                    time.sleep(0.11) # Wait before taking another image.
         #endwhile
     #enddef
 
 def main():
-    # TO-DO: How to control precisely the cleanup of cap??
+    # TO-DO: How to control precisely the cleanup of resources?
 
-    # Fire up the webcam and set capture properties.
+    # Fire up the webcam and set capture properties. Assume the frame size is ok.
     global cap
     cap = cv2.VideoCapture(0)
     cap.set( cv2.CAP_PROP_FRAME_WIDTH, frame_width )
@@ -289,11 +308,10 @@ def main():
     tpm = TapTapMachine()
     tpm.run()
     tpm.cleanup()
-    
+
     # Done with the webcam.
     cap.release()
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
-
