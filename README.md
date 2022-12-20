@@ -31,3 +31,5 @@ I swapped to play the game with my phone and immediately it played a perfect gam
 Enough talk.  Wife's game went from 488 to 415.  Mine went from 191 to 26.  Swapping back to her phone ... rank no. 6.  I was deliriously happy with this achievement.  That was a big Green Crab!!
 
 We called the HK$20 bill "green crab."
+
+![20221204](20221204.jpg "Rank no. 6")
