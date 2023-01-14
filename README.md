@@ -1,5 +1,7 @@
 # Tap Tap Machine
 
+Video of satisfying gameplay: [https://youtu.be/ge3eBmmjOZ0](https://youtu.be/ge3eBmmjOZ0)
+
 ![Robot Top View](top_view.jpeg "Robot Top View")
 
 So here is the story.
@@ -9,8 +11,6 @@ The goal of this mobile game is to beat the record by tapping the right color of
 I was stucked at around 6000, and got pushed further up the next day to 9000.  Then I realized the top players were remotely human because their scores were off the chart.  They had to be bots.
 
 I wanted that HK$10 train ticket so bad ... so I built a robot too, not the kind that ran in the Android simulator but the actual Robot!  3 robotic arms that could tap the screen buttons according to the image from the webcam.
-
-![Robot In Action](in_action.mp4 "Robot In Action")
 
 The biggest challenge in this project is the physical property of the tapping.  The dabs of salt water will react with the metal tip that touches the screen.  The rust built up at the tip must be cleaned regularly for the tapping to be precise.
 
@@ -33,3 +33,19 @@ Enough talk.  Wife's game went from 488 to 415.  Mine went from 191 to 26.  Swap
 We called the HK$20 bill "green crab."
 
 ![20221204](20221204.jpg "Rank no. 6")
+
+## Day 6 of the Week 7
+
+My machine could not get past Level 18 due to the physical limitations with the tapping and camera frame rate.  The game itself cannot react any faster than 140ms between taps.  If the taps are any faster, the game may miss a tap and over.  Taking a picture after tapping needs about 190ms to settle because of the in-game animation.
+
+The math is simple.  The action sequence of taking 1 photo and 8 consecute taps is 1.31s.  Game time of 20s allows only 18 times of the action sequence.  I can therefore conclude my journey in this game.
+
+By the way, the top player has finished Level 23 of 130 taps.  Maybe you can do the math ... I can't.
+
+![20230114](20230114.png "The camera sees this")
+
+## Summary of Reward
+
+Me and my wife both are in the top 500 for 7 weeks.  That is equivalent to HK$140.  Yay!
+
+

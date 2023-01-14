@@ -9,9 +9,9 @@ import time
 
 # Servo colors.
 WHITE = 22 # GPIO pin.
-RED   = 24 # GPIO pin.
+RED   = 23 # GPIO pin.
 BLUE  = 17 # GPIO pin.
-GREY  = 23 # GPIO pin but not connected.  We assume the 4th color meaning none of the above.
+GREY  = 25 # GPIO pin but not connected.  We assume the 4th color meaning none of the above.
 
 colorText = {
     WHITE: "WHITE",
@@ -21,13 +21,13 @@ colorText = {
     }
 
 # Webcam resolution.
-frame_height = 480
-frame_width = 640
+frame_height = 270
+frame_width = 480
 
 class Pixel:
     move = 1 # Number of pixel to move targets.
-    color_differential = 32 # Differential of RGB values to call a specific color.
-    color_threshold = 0 # Minimum RGB value to identify a color.
+    color_differential = 60 # Differential of RGB values to call a specific color.
+    color_threshold = 100 # Minimum RGB value to identify a color.
     def __init__(self, y=0, x=0):
         self.y = y
         self.x = x
@@ -51,22 +51,21 @@ class Pixel:
             self.x = frame_width-1
     def drawCrossHair(self, frame, radius=10):
         """Draw the cross-hair on the frame."""
-        for _y in range(self.y-radius, self.y+radius+1):
-            if _y != self.y:
-                frame[_y][self.x] = Pixel.flipColor(frame[_y][self.x])
-        for _x in range(self.x-radius, self.x+radius+1):
-            if _x != self.x:
-                frame[self.y][_x] = Pixel.flipColor(frame[self.y][_x])
+        b,g,r = (frame[self.y][self.x])
+        cv2.putText( frame, f'{colorText[self.getColor(frame)]}({r},{g},{b})', (self.x+10,self.y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2, cv2.LINE_AA )
+        for i in range(1, 5):
+            frame[self.y][self.x+i] = frame[self.y][self.x-i] = \
+            frame[self.y+i][self.x] = frame[self.y-i][self.x] = Pixel.flipColor(frame[self.y][self.x])
     def getColor(self, frame):
         """Get the color code of this target from the frame."""
         b, g, r = ( frame[self.y][self.x] )
         # Our scheme to determine the color at the target.
-        if r > g+Pixel.color_differential and r > b+Pixel.color_differential:
-            return RED
-        elif b > r+Pixel.color_differential and b > g+Pixel.color_differential:
-            return BLUE
-        elif r > Pixel.color_threshold and b > Pixel.color_threshold and g > Pixel.color_threshold:
+        if g > Pixel.color_threshold and r > Pixel.color_threshold and b > Pixel.color_threshold: # r > Pixel.color_threshold and b > Pixel.color_threshold and g > Pixel.color_threshold:
             return WHITE
+        if r > b+Pixel.color_differential:
+            return RED
+        if b > r+Pixel.color_differential: # and b > g+Pixel.color_differential:
+            return BLUE
         else:
             return GREY
     @classmethod
@@ -80,11 +79,14 @@ class Servo:
         self.gpin = gpin
         self.angleUp = angle # degrees.
         self.angleDisplacement = 20 # 18 is good
-        self.tapDuration =     0.045 # seconds. #<--- TUNE THIS
-        self.postTapDuration = 0.105 # seconds #<--- TUNE THIS
+        self.tapDuration0 =     0.045 # seconds. #<--- 0.045
+        self.postTapDuration0 = 0.100 # seconds. #<--- 0.105
+        self.tapDuration = 0.0
+        self.postTapDuration = 0.0
         Servo.pwm.set_mode(self.gpin, pigpio.OUTPUT)
         Servo.pwm.set_PWM_frequency(self.gpin, 50)  # My servo operates at 50Hz.
         Servo.pwm.set_servo_pulsewidth(self.gpin, Servo.translateDegree(self.angleUp)) # Move arm to the ready position.
+        self.faster(reset=True)
     def cleanup(self):
         Servo.pwm.set_servo_pulsewidth(self.gpin, Servo.translateDegree(90.0)) # Park arm all the way up for maintenance.
         time.sleep(self.tapDuration)
@@ -92,11 +94,21 @@ class Servo:
         Servo.pwm.set_PWM_frequency(self.gpin, 0)
     def __repr__(self):
         return f'{colorText.get(self.gpin)}: Servo({colorText.get(self.gpin)}, {self.angleUp}),'
+    def faster(self, reset=False):
+        #self.tapDuration -= 0.001
+        self.postTapDuration -= 0.001
+        if reset:
+            self.tapDuration = self.tapDuration0
+            self.postTapDuration = self.postTapDuration0
+        print("self.tapDuration0 =    ", self.tapDuration)
+        print("self.postTapDuration0 =", self.postTapDuration)
+
     def tap(self):
-        Servo.pwm.set_servo_pulsewidth(self.gpin, Servo.translateDegree(self.angleUp-self.angleDisplacement)) # Lower arm.
+        #Servo.pwm.set_servo_pulsewidth(self.gpin, Servo.translateDegree(self.angleUp-self.angleDisplacement)) # Lower arm.
+        Servo.pwm.set_servo_pulsewidth(self.gpin, Servo.translateDegree(0)) # Lower arm.
         time.sleep(self.tapDuration) # Wait slightly for the arm to tap.
         Servo.pwm.set_servo_pulsewidth(self.gpin, Servo.translateDegree(self.angleUp)) # Raise arm.
-        time.sleep(self.postTapDuration) # Wait slightly for the arm to return.
+        time.sleep(self.postTapDuration)
     def tuneAngle(self, change=1):
         self.angleUp += change
         if self.angleUp < 11.0:
@@ -123,13 +135,13 @@ class TapTapMachine:
     def __init__(self):
         # Initialize Servos.
         self.servo = {
-            RED  : Servo(RED  , 20.0),
-            WHITE: Servo(WHITE, 30.0),
-            BLUE : Servo(BLUE , 18.0),
+            RED  : Servo(RED  , 24.0),
+            WHITE: Servo(WHITE, 33.0),
+            BLUE : Servo(BLUE , 23.0),
             GREY : Servo(GREY , 45.0),
             }
         # There are only 8 pixels in the frame for the game. The 9th pixel tracks the GO! signal.
-        self.target = [Pixel(350,379), Pixel(350,344), Pixel(349,311), Pixel(349,277), Pixel(348,243), Pixel(348,209), Pixel(348,174), Pixel(348,141), Pixel(258,292), ]
+        self.target = [Pixel(26,269), Pixel(49,271), Pixel(73,272), Pixel(98,274), Pixel(128,276), Pixel(159,279), Pixel(194,282), Pixel(231,284), Pixel(94,186), ]
     def cleanup(self):
         # Report the servo and target settings in case the next run wants to know.
         for k, v in self.servo.items():
@@ -153,15 +165,17 @@ class TapTapMachine:
         oldButtons = []
         newButtons = []
         level = 0
+        tapCount = 0
+        cameraWait = 0.170  # <-- Tune this
         while True:
             ret, frame = cap.read() # Capture 1 frame from image input.
             if not ret:
                 break
 
             # Display the image for a little while and handle keyboard.
-            if safetyOn:
-                for tgt in self.target:
-                    tgt.drawCrossHair(frame)
+            for tgt in self.target:
+                tgt.drawCrossHair(frame)
+            
             cv2.imshow('live video', frame)
             key = cv2.waitKey(1)
 
@@ -176,7 +190,15 @@ class TapTapMachine:
             # Reset Level.
             elif (key==ord('r')):
                 print('Reset Level')
+                self.servo[WHITE].faster(reset=True)
+                self.servo[RED].faster(reset=True)
+                self.servo[BLUE].faster(reset=True)
                 level = 0
+
+            elif (key==ord('f')):
+                self.servo[WHITE].faster()
+                self.servo[RED].faster()
+                self.servo[BLUE].faster()
 
             # Flip the safety on/off.
             elif (key==ord('s')):
@@ -254,6 +276,8 @@ class TapTapMachine:
 
             # Discard and try again if GREY is detected.
             if GREY in newButtons:
+                if not safetyOn:
+                    print(f"Grey")
                 continue
 
             if (key==ord('p')):
@@ -261,7 +285,7 @@ class TapTapMachine:
 
             # Discard and try again if the text "GO!" is still in this frame.
             if self.target[-1].getColor(frame) == WHITE:
-                time.sleep(0.02)
+                time.sleep(0)
                 continue
 
             # Main dish here.
@@ -271,26 +295,17 @@ class TapTapMachine:
                     # Safety Off ... Fire !!!!!!!!
                     if tapCount == 0:
                         tiStart = time.time()
+
                     for k in newButtons[:8]:
-                        tapCount += 1
-                        if False and tapCount == tapMax:
-                            while True:
-                                if time.time() - tiStart > 19.4:
-                                    break
-                            # Want to tap the very last one at the very last moment.
-
                         self.servo[k].tap()
-                        #j += 1
-                        #ret, frame = cap.read() # To see what is in between taps.
-                        #cv2.imwrite(f'{ti}.{j}.png', frame)
+                        tapCount += 1
 
-                    #if level == 18 and tapCount == 104: # Couldn't make the 105'th in time.
-                    #    self.servo[BLUE].tap()
                     self.printButtons(newButtons) # Debug print.
-                    cv2.imwrite(f'x.png', frame)
+                    cv2.imwrite(f'{tapCount}.png', frame)
 
                     oldButtons = newButtons
-                    time.sleep(0.11) # Wait before taking another image.
+                    time.sleep(cameraWait) # Wait before taking another image.
+
         #endwhile
     #enddef
 
@@ -302,7 +317,7 @@ def main():
     cap = cv2.VideoCapture(0)
     cap.set( cv2.CAP_PROP_FRAME_WIDTH, frame_width )
     cap.set( cv2.CAP_PROP_FRAME_HEIGHT, frame_height )
-    #cap.set( cv2.CAP_PROP_FPS, 15 )
+    cap.set( cv2.CAP_PROP_FPS, 30 )
 
     # Run the machine.
     tpm = TapTapMachine()
